@@ -7,7 +7,9 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.search import ProductSearchEngine
-from config import GEMINI_API_KEY
+import streamlit as st
+
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 # -----------------------------
 # Page Configuration
