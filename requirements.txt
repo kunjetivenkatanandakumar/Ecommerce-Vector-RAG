@@ -1,0 +1,11 @@
+notebook
+google-generativeai
+uvicorn
+streamlit
+chromadb
+sentence-transformers
+pandas
+numpy
+matplotlib
+seaborn 
+scikit-learn
