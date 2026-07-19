@@ -1,4 +1,6 @@
+import os
 import chromadb
+import pandas as pd
 from sentence_transformers import SentenceTransformer
 
 
@@ -6,79 +8,76 @@ class ProductSearchEngine:
 
     def __init__(self, db_path):
 
-        print("Loading ChromaDB...")
+        self.db_path = db_path
 
         self.client = chromadb.PersistentClient(path=db_path)
 
-        self.collection = self.client.get_collection(
-            name="amazon_products"
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+
+        try:
+            self.collection = self.client.get_collection("amazon_products")
+            print("Existing ChromaDB loaded.")
+
+        except Exception:
+
+            print("Collection not found.")
+            print("Creating ChromaDB...")
+
+            self.collection = self.build_database()
+
+    def build_database(self):
+
+        data_path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "data",
+            "processed",
+            "amazon_products_embeddings.pkl"
         )
 
-        print("Loading Embedding Model...")
+        df = pd.read_pickle(data_path)
 
-        self.model = SentenceTransformer(
-            "all-MiniLM-L6-v2"
+        df = df.drop_duplicates(subset=["product_id"]).reset_index(drop=True)
+
+        collection = self.client.create_collection("amazon_products")
+
+        collection.add(
+            ids=[f"product_{i}" for i in range(len(df))],
+            embeddings=df["embedding"].tolist(),
+            documents=df["combined_text"].tolist(),
+            metadatas=[
+                {
+                    "product_name": str(row["product_name"]),
+                    "category": str(row["category"]),
+                    "price": float(row["discounted_price"]),
+                    "rating": float(row["rating"])
+                }
+                for _, row in df.iterrows()
+            ]
         )
 
-        print("Search Engine Ready!\n")
+        print("Database created successfully.")
+
+        return collection
 
     def search(self, query, top_k=5):
 
-        query_embedding = self.model.encode(
-            query
-        ).tolist()
+        embedding = self.model.encode(query).tolist()
 
         results = self.collection.query(
-            query_embeddings=[query_embedding],
+            query_embeddings=[embedding],
             n_results=top_k
         )
 
         output = []
 
-        for i in range(len(results["ids"][0])):
-
-            metadata = results["metadatas"][0][i]
+        for metadata in results["metadatas"][0]:
 
             output.append({
-
                 "product_name": metadata["product_name"],
-
                 "category": metadata["category"],
-
                 "price": metadata["price"],
-
                 "rating": metadata["rating"]
-
             })
 
         return output
-
-
-if __name__ == "__main__":
-
-    search_engine = ProductSearchEngine(
-        r"C:\Users\kunja\Downloads\Ecommerce_Vector_RAG\chroma_db"
-    )
-
-    while True:
-
-        query = input("\nSearch Product (type 'exit' to quit): ")
-
-        if query.lower() == "exit":
-            break
-
-        products = search_engine.search(query)
-
-        print("\nTop Recommendations\n")
-
-        for i, product in enumerate(products, start=1):
-
-            print("=" * 60)
-
-            print(f"{i}. {product['product_name']}")
-
-            print("Category :", product["category"])
-
-            print("Price    :", product["price"])
-
-            print("Rating   :", product["rating"])
